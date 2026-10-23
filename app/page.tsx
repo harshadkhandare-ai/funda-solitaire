@@ -18,6 +18,7 @@ import {
   VolumeX,
   Vibrate,
 } from 'lucide-react';
+import { endSession, newId, startSession, tick, track } from '@/lib/activity';
 import { Dealer } from '@/components/dealer';
 import { ProjectedCard } from '@/components/projected-card';
 import { CardArtwork, CardBack } from '@/components/card-artwork';
@@ -62,6 +63,40 @@ export default function Home() {
   const [dealing, setDealing] = useState(false);
   const [autoCompleting, setAutoCompleting] = useState(false);
   const [victoryReady, setVictoryReady] = useState(false);
+  const matchRef = useRef<string | null>(null);
+  const lastMatch = useRef<string | null>(null);
+  const gameRef = useRef<Game | null>(null);
+  gameRef.current = game;
+  function endMatch(result: string, outcome?: string) {
+    const matchId = matchRef.current;
+    if (!matchId) return;
+    lastMatch.current = matchId;
+    matchRef.current = null;
+    track('game_ended', {
+      matchId,
+      payload: {
+        result,
+        ...(outcome ? { outcome } : {}),
+        score: gameRef.current?.score ?? 0,
+      },
+    });
+  }
+  useEffect(() => {
+    if (game && screen === 'table' && won(game)) endMatch('completed', 'won');
+  }, [game, screen]);
+  useEffect(() => {
+    if (modal !== 'pause') return;
+    track('session_paused');
+    return () => track('session_resumed');
+  }, [modal === 'pause']);
+  useEffect(() => {
+    function leave() {
+      endMatch('abandoned');
+      endSession();
+    }
+    window.addEventListener('pagehide', leave);
+    return () => window.removeEventListener('pagehide', leave);
+  }, []);
   useEffect(() => {
     setVictoryReady(false);
     if (!game || !won(game) || screen !== 'table') return;
@@ -570,7 +605,10 @@ export default function Home() {
   useEffect(() => {
     if (!game || screen !== 'table' || modal || dealing || won(game)) return;
     const timer = setInterval(() => {
-      if (!document.hidden) setSeconds((s) => s + 1);
+      if (!document.hidden) {
+        setSeconds((s) => s + 1);
+        tick();
+      }
     }, 1000);
     return () => clearInterval(timer);
   }, [!!game, screen, modal, dealing, game && won(game)]);
@@ -728,6 +766,10 @@ export default function Home() {
     preparingRef.current = false;
     setPreparing(false);
     setAutoCompleting(false);
+    startSession();
+    endMatch('restarted');
+    matchRef.current = newId();
+    track('game_started', { matchId: matchRef.current });
     feedback('deal');
     dealSequence.current++;
     setDealerMode('deal');
@@ -767,6 +809,7 @@ export default function Home() {
     setHasSaved(true);
   }
   function goHome() {
+    endMatch('exited');
     setDealerMode('none');
     setScreen('start');
     setModal('');
@@ -1453,7 +1496,16 @@ export default function Home() {
           )}
           {(modal === 'new' || victory) && (
             <div className="new-options">
-              <Button className="primary-action" onClick={() => restart()}>
+              <Button
+                className="primary-action"
+                onClick={() => {
+                  if (victory)
+                    track('play_again_clicked', {
+                      matchId: matchRef.current ?? lastMatch.current ?? undefined,
+                    });
+                  void restart();
+                }}
+              >
                 <Shuffle /> {victory ? 'Play Again' : 'Start Game'}{' '}
                 <ArrowRight />
               </Button>
