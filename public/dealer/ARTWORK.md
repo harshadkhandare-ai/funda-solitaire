@@ -1,0 +1,7 @@
+# Funda dealer
+
+Generated with the built-in image-generation tool. The original illustration is retained as `host.png`. The game now uses `tina-reference.png`, based on the supplied portrait; see `TINA-REFERENCE.md` for its prompt and background removal. Earlier portraits remain available. The portrait is reused on the home screen, during the deal, and for hint guidance. Cards animate from the dealer's deck; the portrait itself is a still illustration with entrance and exit motion.
+
+## Final prompt
+
+Use case: stylized-concept. Asset type: friendly female card dealer character portrait for a premium solitaire mobile game. A clearly adult woman around 30 years old with warm brown skin, expressive brown eyes and elegant dark wavy hair swept over one shoulder, friendly welcoming smile, wearing a tailored deep emerald waistcoat over a crisp ivory shirt with rolled sleeves, small gold bow tie and tasteful gold earrings. Waist-up, facing viewer, BOTH hands visible at waist height: her left hand holds a blue-and-gold deck and her right hand gently offers a single ivory playing card. Polished hand-painted 3D game character illustration, vibrant rich emerald and warm gold, high-quality friendly casual-game art, refined rather than cartoonish. Character fills a portrait canvas with crown of head and both hands fully visible, no cropping. Simple smooth deep emerald studio background #075039 with a subtle soft halo, no scenery. No text, no letters, no logos, no extra people. Cards have blue and gold backs, no readable ranks needed.
