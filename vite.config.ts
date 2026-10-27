@@ -1,9 +1,7 @@
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { sites } from '@openai/sites-vite-plugin';
 import tailwindcss from '@tailwindcss/postcss';
 import vinext from 'vinext';
-import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json';
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
@@ -36,45 +34,6 @@ const localBindingConfig = {
     : [],
 };
 
-// Serves api/activity.ts in `vite dev`, where Vercel functions don't run.
-function activityApi(): Plugin {
-  return {
-    name: 'activity-api',
-    configureServer(server) {
-      Object.assign(process.env, {
-        ...loadEnv('development', process.cwd(), 'ACTIVITY_'),
-        ...process.env,
-      });
-      server.middlewares.use('/api/activity', async (req, res) => {
-        try {
-          if (req.method !== 'POST') {
-            res.statusCode = 405;
-            return res.end();
-          }
-          const chunks: Buffer[] = [];
-          for await (const chunk of req) chunks.push(chunk as Buffer);
-          // Native Node TS import: the Cloudflare plugin makes ssrLoadModule unusable.
-          const { POST } = await import(
-            `${pathToFileURL(resolve('api/activity.ts')).href}?t=${Date.now()}`
-          );
-          const response: Response = await POST(
-            new Request('http://localhost/api/activity', {
-              method: 'POST',
-              body: Buffer.concat(chunks),
-            }),
-          );
-          res.statusCode = response.status;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(await response.text());
-        } catch (error) {
-          res.statusCode = 500;
-          res.end(JSON.stringify({ success: false, message: String(error) }));
-        }
-      });
-    },
-  };
-}
-
 export default defineConfig(async () => {
   // Vercel serves this browser-only game as static HTML and assets.
   if (process.env.VERCEL) {
@@ -98,7 +57,6 @@ export default defineConfig(async () => {
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
     plugins: [
-      activityApi(),
       vinext(),
       sites(),
       cloudflare({

@@ -18,7 +18,6 @@ import {
   VolumeX,
   Vibrate,
 } from 'lucide-react';
-import { endSession, newId, startSession, tick, track } from '@/lib/activity';
 import { Dealer } from '@/components/dealer';
 import { ProjectedCard } from '@/components/projected-card';
 import { CardArtwork, CardBack } from '@/components/card-artwork';
@@ -46,6 +45,7 @@ import {
   Target,
   won,
 } from '@/lib/solitaire';
+import { initAnalytics, newId, track } from '@/lib/analytics';
 
 export default function Home() {
   const [game, setGame] = useState<Game | null>(null),
@@ -63,40 +63,6 @@ export default function Home() {
   const [dealing, setDealing] = useState(false);
   const [autoCompleting, setAutoCompleting] = useState(false);
   const [victoryReady, setVictoryReady] = useState(false);
-  const matchRef = useRef<string | null>(null);
-  const lastMatch = useRef<string | null>(null);
-  const gameRef = useRef<Game | null>(null);
-  gameRef.current = game;
-  function endMatch(result: string, outcome?: string) {
-    const matchId = matchRef.current;
-    if (!matchId) return;
-    lastMatch.current = matchId;
-    matchRef.current = null;
-    track('game_ended', {
-      matchId,
-      payload: {
-        result,
-        ...(outcome ? { outcome } : {}),
-        score: gameRef.current?.score ?? 0,
-      },
-    });
-  }
-  useEffect(() => {
-    if (game && screen === 'table' && won(game)) endMatch('completed', 'won');
-  }, [game, screen]);
-  useEffect(() => {
-    if (modal !== 'pause') return;
-    track('session_paused');
-    return () => track('session_resumed');
-  }, [modal === 'pause']);
-  useEffect(() => {
-    function leave() {
-      endMatch('abandoned');
-      endSession();
-    }
-    window.addEventListener('pagehide', leave);
-    return () => window.removeEventListener('pagehide', leave);
-  }, []);
   useEffect(() => {
     setVictoryReady(false);
     if (!game || !won(game) || screen !== 'table') return;
@@ -571,6 +537,24 @@ export default function Home() {
     if (modal || screen !== 'table') finishDrag(true);
   }, [modal, screen]);
   useEffect(() => () => cancelAnimationFrame(dragFrame.current), []);
+  // The dealt hand being reported; null once it is won or before any deal.
+  const matchId = useRef<string | null>(null);
+  const autoFinished = useRef(false);
+  useEffect(() => initAnalytics(), []);
+  useEffect(() => {
+    if (!game || !won(game) || !matchId.current) return;
+    track('game_completed', {
+      matchId: matchId.current,
+      metadata: {
+        outcome: 'won',
+        score: game.score,
+        moves: game.moves,
+        seconds,
+        autoFinished: autoFinished.current,
+      },
+    });
+    matchId.current = null;
+  }, [game]);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('funda-game-v1') || 'null');
@@ -581,6 +565,8 @@ export default function Home() {
         setSound(saved.sound ?? true);
         setHaptics(saved.haptics ?? true);
         setHasSaved(saved.started ?? saved.game.moves > 0);
+        matchId.current = saved.matchId ?? null;
+        autoFinished.current = !!saved.autoFinished;
         return;
       }
     } catch {}
@@ -598,6 +584,8 @@ export default function Home() {
             sound,
             haptics,
             started: hasSaved,
+            matchId: matchId.current,
+            autoFinished: autoFinished.current,
           }),
         );
       } catch {}
@@ -605,10 +593,7 @@ export default function Home() {
   useEffect(() => {
     if (!game || screen !== 'table' || modal || dealing || won(game)) return;
     const timer = setInterval(() => {
-      if (!document.hidden) {
-        setSeconds((s) => s + 1);
-        tick();
-      }
+      if (!document.hidden) setSeconds((s) => s + 1);
     }, 1000);
     return () => clearInterval(timer);
   }, [!!game, screen, modal, dealing, game && won(game)]);
@@ -766,10 +751,15 @@ export default function Home() {
     preparingRef.current = false;
     setPreparing(false);
     setAutoCompleting(false);
-    startSession();
-    endMatch('restarted');
-    matchRef.current = newId();
-    track('game_started', { matchId: matchRef.current });
+    if (victory) track('play_again_clicked');
+    if (matchId.current && game)
+      track('game_abandoned', {
+        matchId: matchId.current,
+        metadata: { score: game.score, moves: game.moves, seconds },
+      });
+    matchId.current = newId();
+    autoFinished.current = false;
+    track('game_started', { matchId: matchId.current });
     feedback('deal');
     dealSequence.current++;
     setDealerMode('deal');
@@ -791,6 +781,7 @@ export default function Home() {
     if (game && history.length && !dealing && !autoCompleting && !dragging) {
       captureCardPositions();
       feedback('undo');
+      track('undo_used', { matchId: matchId.current });
       setDealerMode('none');
       setGame(history.at(-1)!);
       setHistory((h) => h.slice(0, -1));
@@ -809,7 +800,6 @@ export default function Home() {
     setHasSaved(true);
   }
   function goHome() {
-    endMatch('exited');
     setDealerMode('none');
     setScreen('start');
     setModal('');
@@ -819,6 +809,7 @@ export default function Home() {
   function showHint() {
     if (!game || dealing || autoCompleting || dragging) return;
     feedback('hint');
+    track('hint_used', { matchId: matchId.current });
     setDealerMode('hint');
     setHintVisit((v) => v + 1);
     const m = bestHint(game, history);
@@ -889,6 +880,8 @@ export default function Home() {
   }
   function autoFinish() {
     if (!game) return;
+    autoFinished.current = true;
+    track('auto_finish_used', { matchId: matchId.current });
     setAutoCompleting(true);
   }
   function renderCard(
@@ -1496,16 +1489,7 @@ export default function Home() {
           )}
           {(modal === 'new' || victory) && (
             <div className="new-options">
-              <Button
-                className="primary-action"
-                onClick={() => {
-                  if (victory)
-                    track('play_again_clicked', {
-                      matchId: matchRef.current ?? lastMatch.current ?? undefined,
-                    });
-                  void restart();
-                }}
-              >
+              <Button className="primary-action" onClick={() => restart()}>
                 <Shuffle /> {victory ? 'Play Again' : 'Start Game'}{' '}
                 <ArrowRight />
               </Button>
