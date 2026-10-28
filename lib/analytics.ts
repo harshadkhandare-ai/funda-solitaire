@@ -50,11 +50,14 @@ export function newId(): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
-// The host app opens the webview with ?token=<Funda JWT>. The token is
-// remembered so in-game reloads keep reporting for the same player.
+// The host app opens the webview with #token=<Funda JWT> (older builds used
+// ?token=). The token is remembered so in-game reloads keep reporting for the
+// same player.
 function resolveToken(): string | null {
   try {
-    const fromUrl = new URLSearchParams(location.search).get('token');
+    const fromUrl =
+      new URLSearchParams(location.hash.slice(1)).get('token')?.trim() ||
+      new URLSearchParams(location.search).get('token')?.trim();
     if (fromUrl) {
       localStorage.setItem(TOKEN_KEY, fromUrl);
       return fromUrl;
