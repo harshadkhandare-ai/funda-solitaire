@@ -55,9 +55,10 @@ export function newId(): string {
 // same player.
 function resolveToken(): string | null {
   try {
-    const fromUrl =
-      new URLSearchParams(location.hash.slice(1)).get('token')?.trim() ||
-      new URLSearchParams(location.search).get('token')?.trim();
+    const url = new URL(window.location.href);
+    const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+    const pick = (k: string) => hash.get(k) || url.searchParams.get(k) || null;
+    const fromUrl = pick('token')?.trim();
     if (fromUrl) {
       localStorage.setItem(TOKEN_KEY, fromUrl);
       return fromUrl;
