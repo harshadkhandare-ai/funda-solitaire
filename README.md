@@ -74,3 +74,13 @@ Foundations sit on the left; the stock sits at the far right beside its waste pi
 ## Dealer host
 
 Tina welcomes players on the start screen in simple English. New deals animate from her deck at the bottom of the table, followed by a short farewell. Hint brings her back with a legal move or draw/recycle guidance for up to ten seconds; her bubble can be dismissed. The character is a still illustration with card and interface animation, not a skeletal or video character. All guidance is text.
+
+## Analytics (preprod)
+
+The game posts gameplay events to the Funda activity endpoint `POST https://apip-preprod.classplusapp.com/funda/api/activity/events` (override with `VITE_FUNDA_EVENTS_URL` at build time). The Funda backend writes Funda DB; the game never connects to the database.
+
+- Auth: `Authorization: Bearer <Funda JWT>`. The backend takes `userId` and `orgId` from the token. Open the game with `?token=<JWT>`; the token is kept in localStorage for reloads. Without a token, analytics stay off.
+- Body: `{ app: "solitaire", session: { sessionId, activeSeconds }, events: [{ eventId, type, payload }] }`, up to 20 events, sent every 5 seconds when events are queued. `payload` is flat: string or number values only (booleans are sent as 0/1). The hand id travels as `payload.matchId`. The server sets the event time and drops unknown fields. Invalid events come back in `data.rejected` with HTTP 200. Spec: "Activity Tracking API" (FundaActivityTracker.docx).
+- Events: `session_started`, `session_paused`, `session_resumed`, `session_ended`, `game_started`, `game_completed {outcome, score, moves, seconds, autoFinished}`, `game_abandoned {score, moves, seconds}`, `hint_used`, `undo_used`, `auto_finish_used`, `play_again_clicked`. An empty batch every 30 seconds is the heartbeat and carries the running `activeSeconds`.
+
+The spec lists `app` values `ludo`, `pacman` and `rashifal` only; preprod currently accepts `solitaire`, but the backend team should add it officially.
